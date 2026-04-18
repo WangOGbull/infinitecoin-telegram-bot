@@ -1,11 +1,23 @@
 const { Telegraf, Markup } = require('telegraf');
 const { Connection, PublicKey, Keypair } = require('@solana/web3.js');
-const { Program, AnchorProvider, web3 } = require('@coral-xyz/anchor');
 const { getAssociatedTokenAddress, getAccount } = require('@solana/spl-token');
 const axios = require('axios');
 const bs58 = require('bs58');
+const express = require('express');
 
-// Configuration
+// ============== EXPRESS SERVER FOR RENDER ==============
+const app = express();
+const port = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+    res.send('Infinitecoin Jumper Bot is running!');
+});
+
+app.listen(port, () => {
+    console.log(`✅ Server listening on port ${port}`);
+});
+
+// ============== TELEGRAM BOT CONFIGURATION ==============
 const BOT_TOKEN = '8695754535:AAF3WjpAdQmmRWXqubN6oSidYYGmQEdr_ek';
 const PROGRAM_ID = new PublicKey('YourEscrowProgramID');
 const TOKEN_MINT = new PublicKey('C8KsvkMBuqmvX416MWTJGKW9S9MpKiUjmpnj1fhzpump');
@@ -14,7 +26,7 @@ const RPC_ENDPOINT = 'https://api.mainnet-beta.solana.com';
 // Initialize Solana connection
 const connection = new Connection(RPC_ENDPOINT);
 
-// Your bot wallet private key (converted from the key you provided)
+// Your bot wallet private key
 const privateKeyBytes = bs58.decode('2CqHu3hM53aSoBHT2ABpWcUsMHM1hZfLLnuVv2saQiXjuZMrMM45irEiBYsopCU8J9jdaorjthNAyEGamHMXnJ8R');
 const botWallet = Keypair.fromSecretKey(privateKeyBytes);
 
@@ -25,7 +37,6 @@ const pendingConnections = new Map();
 const bot = new Telegraf(BOT_TOKEN);
 
 // ============== WELCOME MESSAGE (/start) ==============
-
 bot.start(async (ctx) => {
     const userName = ctx.from.first_name || 'Player';
     const welcomeText = `
@@ -46,7 +57,7 @@ Jump, dodge, and collect Infinite Coins (IFC) in this thrilling Telegram P2E gam
 💼 */wallet* - Check your wallet & IFC balance
 ❓ */help* - Game guide, tips, and requirements
 
-⚠️ *Important:* You need at least *$2 worth of IFC* in your connected wallet to claim rewards. This keeps our community strong and bot-free!
+⚠️ *Important:* You need at least *$2 worth of IFC* in your connected wallet to claim rewards.
 
 Ready to jump into the infinite? Click /play to start! 🚀
 `;
@@ -62,7 +73,6 @@ Ready to jump into the infinite? Click /play to start! 🚀
 });
 
 // ============== /HELP COMMAND ==============
-
 bot.command('help', async (ctx) => {
     const helpText = `
 📚 *Infinitecoin Jumper - Complete Guide*
@@ -76,10 +86,7 @@ bot.command('help', async (ctx) => {
 
 💰 *Earning IFC:*
 • Each coin collected = IFC tokens earned
-• Rewards are calculated based on:
-  - Coins collected
-  - Height reached
-  - Special combos (collect 10 coins without missing)
+• Rewards based on coins collected and height reached
 
 🔐 *Claiming Your Rewards:*
 1. Connect your Phantom wallet using */connect*
@@ -88,13 +95,10 @@ bot.command('help', async (ctx) => {
 4. Tokens sent directly to your wallet!
 
 ⚠️ *Requirements:*
-You must hold at least *$2 USD worth of IFC* in your connected wallet to claim rewards. This ensures:
-• Fair distribution to real players
-• Protection against bots and abuse
-• Stronger community commitment
+You must hold at least *$2 USD worth of IFC* in your connected wallet to claim rewards.
 
 💡 *Don't have IFC yet?*
-Buy on [Jupiter](https://jup.ag/swap/SOL-C8KsvkMBuqmvX416MWTJGKW9S9MpKiUjmpnj1fhzpump) or [Raydium](https://raydium.io/swap/?inputCurrency=sol&outputCurrency=C8KsvkMBuqmvX416MWTJGKW9S9MpKiUjmpnj1fhzpump)
+Buy on [Jupiter](https://jup.ag/swap/SOL-C8KsvkMBuqmvX416MWTJGKW9S9MpKiUjmpnj1fhzpump)
 
 🆘 *Need Support?*
 Contact @YourSupportUsername for assistance
@@ -111,7 +115,6 @@ Contact @YourSupportUsername for assistance
 });
 
 // ============== /PLAY COMMAND ==============
-
 bot.command('play', async (ctx) => {
     const telegramId = ctx.from.id;
     const hasWallet = connectedWallets.has(telegramId);
@@ -130,7 +133,6 @@ bot.command('play', async (ctx) => {
 });
 
 // ============== /WALLET COMMAND ==============
-
 bot.command('wallet', async (ctx) => {
     const telegramId = ctx.from.id;
     const walletData = connectedWallets.get(telegramId);
@@ -139,10 +141,6 @@ bot.command('wallet', async (ctx) => {
         return ctx.reply(
             `💼 *Wallet Not Connected*\n\n` +
             `You haven't connected a Phantom wallet yet.\n\n` +
-            `Connect now to:\n` +
-            `• View your IFC balance\n` +
-            `• Track earned rewards\n` +
-            `• Claim your tokens\n\n` +
             `Use */connect* to get started!`,
             {
                 parse_mode: 'Markdown',
@@ -157,7 +155,6 @@ bot.command('wallet', async (ctx) => {
     
     try {
         const balance = await fetchWalletBalance(walletData.address);
-        const rewards = await fetchPendingRewards(telegramId);
         const usdValue = await calculateUsdValue(balance);
         const canClaim = usdValue >= 2;
         
@@ -171,18 +168,15 @@ bot.command('wallet', async (ctx) => {
 💰 *IFC Balance:* ${formatNumber(balance)} IFC
 💵 *Value:* $${usdValue.toFixed(2)} USD
 
-🎁 *Pending Rewards:* ${formatNumber(rewards)} IFC
 🔓 *Claim Status:* ${canClaim ? '✅ Eligible' : '❌ Locked'}
 
 ${!canClaim ? `\n⚠️ *Need $${(2 - usdValue).toFixed(2)} more to unlock claims*\nHold at least $2 worth of IFC to withdraw your rewards.` : ''}
-
-${rewards > 0 && canClaim ? '\n🚀 *You have rewards ready to claim!*' : ''}
 `;
 
         const buttons = [];
-        if (rewards > 0 && canClaim) {
+        if (canClaim) {
             buttons.push([Markup.button.callback('🎁 Claim Rewards', 'claim_rewards')]);
-        } else if (rewards > 0 && !canClaim) {
+        } else {
             buttons.push([Markup.button.url('🛒 Buy IFC', 'https://jup.ag/swap/SOL-C8KsvkMBuqmvX416MWTJGKW9S9MpKiUjmpnj1fhzpump')]);
         }
         buttons.push(
@@ -203,16 +197,13 @@ ${rewards > 0 && canClaim ? '\n🚀 *You have rewards ready to claim!*' : ''}
 });
 
 // ============== /CONNECT COMMAND ==============
-
 bot.command('connect', async (ctx) => {
     const telegramId = ctx.from.id;
     
     if (connectedWallets.has(telegramId)) {
         const wallet = connectedWallets.get(telegramId);
         return ctx.reply(
-            `✅ *Wallet Already Connected*\n\n` +
-            `🔗 Address: \`${wallet.address}\`\n\n` +
-            `You're all set to earn and claim IFC! 🎉`,
+            `✅ *Wallet Already Connected*\n\n🔗 Address: \`${wallet.address}\``,
             {
                 parse_mode: 'Markdown',
                 ...Markup.inlineKeyboard([
@@ -240,10 +231,6 @@ bot.command('connect', async (ctx) => {
         `2. Select your wallet in Phantom\n` +
         `3. Approve the connection\n` +
         `4. Return to Telegram\n\n` +
-        `🔒 *Your wallet is used for:*\n` +
-        `• Receiving IFC rewards\n` +
-        `• Verifying eligibility ($2 minimum)\n` +
-        `• Secure token claims\n\n` +
         `⚠️ *Never share your private key!* We only need your public address.`,
         {
             parse_mode: 'Markdown',
@@ -256,12 +243,10 @@ bot.command('connect', async (ctx) => {
 });
 
 // ============== ACTION HANDLERS ==============
-
 bot.action('play_game', async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.reply(
-        `🎮 *Launching Infinitecoin Jumper...*\n\n` +
-        `Tap the button below to start playing!`,
+        `🎮 *Launching Infinitecoin Jumper...*\n\nTap the button below to start playing!`,
         {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
@@ -273,26 +258,22 @@ bot.action('play_game', async (ctx) => {
 
 bot.action('connect_wallet', async (ctx) => {
     await ctx.answerCbQuery();
-    const fakeCtx = { ...ctx, from: ctx.from };
-    await bot.command('connect', fakeCtx);
+    await bot.command('connect', { ...ctx, from: ctx.from });
 });
 
 bot.action('show_wallet', async (ctx) => {
     await ctx.answerCbQuery();
-    const fakeCtx = { ...ctx, from: ctx.from };
-    await bot.command('wallet', fakeCtx);
+    await bot.command('wallet', { ...ctx, from: ctx.from });
 });
 
 bot.action('show_help', async (ctx) => {
     await ctx.answerCbQuery();
-    const fakeCtx = { ...ctx, from: ctx.from };
-    await bot.command('help', fakeCtx);
+    await bot.command('help', { ...ctx, from: ctx.from });
 });
 
 bot.action('refresh_wallet', async (ctx) => {
     await ctx.answerCbQuery('Refreshing...');
-    const fakeCtx = { ...ctx, from: ctx.from };
-    await bot.command('wallet', fakeCtx);
+    await bot.command('wallet', { ...ctx, from: ctx.from });
 });
 
 bot.action('change_wallet', async (ctx) => {
@@ -300,9 +281,17 @@ bot.action('change_wallet', async (ctx) => {
     const telegramId = ctx.from.id;
     connectedWallets.delete(telegramId);
     await ctx.reply(
-        `🔄 *Wallet Disconnected*\n\n` +
-        `Your previous wallet has been unlinked.\n` +
-        `Use */connect* to link a new wallet.`
+        `🔄 *Wallet Disconnected*\n\nUse */connect* to link a new wallet.`
+    );
+});
+
+bot.action('claim_rewards', async (ctx) => {
+    await ctx.answerCbQuery();
+    await ctx.reply(
+        `🎁 *Claim Your Rewards*\n\n` +
+        `Your IFC rewards are being processed.\n\n` +
+        `⚠️ *Note:* You need at least $2 worth of IFC in your wallet to claim.\n\n` +
+        `This feature will be fully enabled after the escrow smart contract is deployed.`
     );
 });
 
@@ -310,7 +299,7 @@ bot.action('no_phantom_help', async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.reply(
         `📱 *Getting Started with Phantom*\n\n` +
-        `Phantom is the most popular Solana wallet. Here's how to get it:\n\n` +
+        `Phantom is the most popular Solana wallet.\n\n` +
         `1️⃣ *Download Phantom:*\n` +
         `• iOS: App Store → Search "Phantom"\n` +
         `• Android: Play Store → Search "Phantom"\n` +
@@ -320,11 +309,10 @@ bot.action('no_phantom_help', async (ctx) => {
         `• Tap "Create New Wallet"\n` +
         `• Save your recovery phrase securely!\n\n` +
         `3️⃣ *Add Solana:*\n` +
-        `• Buy SOL from an exchange, or\n` +
+        `• Buy SOL from an exchange\n` +
         `• Transfer SOL to your Phantom address\n\n` +
         `4️⃣ *Connect to Game:*\n` +
-        `• Return here and tap */connect*\n\n` +
-        `Need help? Contact @YourSupportUsername`,
+        `• Return here and tap */connect*`,
         {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
@@ -336,7 +324,6 @@ bot.action('no_phantom_help', async (ctx) => {
 });
 
 // ============== HELPER FUNCTIONS ==============
-
 async function fetchWalletBalance(address) {
     try {
         const tokenAccount = await getAssociatedTokenAddress(
@@ -350,13 +337,9 @@ async function fetchWalletBalance(address) {
     }
 }
 
-async function fetchPendingRewards(telegramId) {
-    return 0;
-}
-
 async function calculateUsdValue(ifcBalance) {
     try {
-        const pricePerToken = 0.0001;
+        const pricePerToken = 0.000001;
         return (ifcBalance * pricePerToken);
     } catch (error) {
         return 0;
@@ -370,9 +353,11 @@ function formatNumber(num) {
     }).format(num);
 }
 
+// ============== START BOT ==============
 bot.launch();
 console.log('🤖 Infinitecoin Jumper Bot is running!');
-console.log('Bot wallet public key:', botWallet.publicKey.toString());
+console.log('✅ Bot wallet public key:', botWallet.publicKey.toString());
 
+// Enable graceful stop
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
