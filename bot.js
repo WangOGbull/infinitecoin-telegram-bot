@@ -3,9 +3,28 @@ const { Connection, PublicKey, Keypair } = require('@solana/web3.js');
 const { getAssociatedTokenAddress, getAccount } = require('@solana/spl-token');
 const axios = require('axios');
 const bs58 = require('bs58');
-const express = require('express');
+
+// ============== CONFIGURATION ==============
+const BOT_TOKEN = '8695754535:AAF3WjpAdQmmRWXqubN6oSidYYGmQEdr_ek';
+const PROGRAM_ID = new PublicKey('YourEscrowProgramID');
+const TOKEN_MINT = new PublicKey('C8KsvkMBuqmvX416MWTJGKW9S9MpKiUjmpnj1fhzpump');
+const RPC_ENDPOINT = 'https://api.mainnet-beta.solana.com';
+
+// Initialize Solana connection
+const connection = new Connection(RPC_ENDPOINT);
+
+// Your bot wallet private key (base58 decoded)
+const privateKeyBytes = bs58.decode('2CqHu3hM53aSoBHT2ABpWcUsMHM1hZfLLnuVv2saQiXjuZMrMM45irEiBYsopCU8J9jdaorjthNAyEGamHMXnJ8R');
+const botWallet = Keypair.fromSecretKey(privateKeyBytes);
+
+// Store user data
+const connectedWallets = new Map();
+const pendingConnections = new Map();
+
+const bot = new Telegraf(BOT_TOKEN);
 
 // ============== EXPRESS SERVER FOR RENDER ==============
+const express = require('express');
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -16,25 +35,6 @@ app.get('/', (req, res) => {
 app.listen(port, () => {
     console.log(`✅ Server listening on port ${port}`);
 });
-
-// ============== TELEGRAM BOT CONFIGURATION ==============
-const BOT_TOKEN = '8695754535:AAF3WjpAdQmmRWXqubN6oSidYYGmQEdr_ek';
-const PROGRAM_ID = new PublicKey('YourEscrowProgramID');
-const TOKEN_MINT = new PublicKey('C8KsvkMBuqmvX416MWTJGKW9S9MpKiUjmpnj1fhzpump');
-const RPC_ENDPOINT = 'https://api.mainnet-beta.solana.com';
-
-// Initialize Solana connection
-const connection = new Connection(RPC_ENDPOINT);
-
-// Your bot wallet private key
-const privateKeyBytes = bs58.decode('2CqHu3hM53aSoBHT2ABpWcUsMHM1hZfLLnuVv2saQiXjuZMrMM45irEiBYsopCU8J9jdaorjthNAyEGamHMXnJ8R');
-const botWallet = Keypair.fromSecretKey(privateKeyBytes);
-
-// Store user data
-const connectedWallets = new Map();
-const pendingConnections = new Map();
-
-const bot = new Telegraf(BOT_TOKEN);
 
 // ============== WELCOME MESSAGE (/start) ==============
 bot.start(async (ctx) => {
@@ -155,6 +155,7 @@ bot.command('wallet', async (ctx) => {
     
     try {
         const balance = await fetchWalletBalance(walletData.address);
+        const rewards = await fetchPendingRewards(telegramId);
         const usdValue = await calculateUsdValue(balance);
         const canClaim = usdValue >= 2;
         
@@ -168,15 +169,18 @@ bot.command('wallet', async (ctx) => {
 💰 *IFC Balance:* ${formatNumber(balance)} IFC
 💵 *Value:* $${usdValue.toFixed(2)} USD
 
+🎁 *Pending Rewards:* ${formatNumber(rewards)} IFC
 🔓 *Claim Status:* ${canClaim ? '✅ Eligible' : '❌ Locked'}
 
 ${!canClaim ? `\n⚠️ *Need $${(2 - usdValue).toFixed(2)} more to unlock claims*\nHold at least $2 worth of IFC to withdraw your rewards.` : ''}
+
+${rewards > 0 && canClaim ? '\n🚀 *You have rewards ready to claim!*' : ''}
 `;
 
         const buttons = [];
-        if (canClaim) {
+        if (rewards > 0 && canClaim) {
             buttons.push([Markup.button.callback('🎁 Claim Rewards', 'claim_rewards')]);
-        } else {
+        } else if (rewards > 0 && !canClaim) {
             buttons.push([Markup.button.url('🛒 Buy IFC', 'https://jup.ag/swap/SOL-C8KsvkMBuqmvX416MWTJGKW9S9MpKiUjmpnj1fhzpump')]);
         }
         buttons.push(
@@ -337,6 +341,10 @@ async function fetchWalletBalance(address) {
     }
 }
 
+async function fetchPendingRewards(telegramId) {
+    return 0;
+}
+
 async function calculateUsdValue(ifcBalance) {
     try {
         const pricePerToken = 0.000001;
@@ -358,6 +366,5 @@ bot.launch();
 console.log('🤖 Infinitecoin Jumper Bot is running!');
 console.log('✅ Bot wallet public key:', botWallet.publicKey.toString());
 
-// Enable graceful stop
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
