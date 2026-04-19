@@ -123,7 +123,7 @@ bot.command('connect', async (ctx) => {
         const wallet = connectedWallets.get(telegramId);
         return ctx.reply(
             `✅ *Wallet Connected*\n\n` +
-            `🔗 Address: \\`${wallet}\\`\n\n` +
+            `🔗 Address: \`${wallet}\`\n\n` +
             `You're ready to earn and claim IFC!`,
             {
                 parse_mode: 'Markdown',
@@ -192,7 +192,7 @@ bot.command('wallet', async (ctx) => {
         await ctx.deleteMessage(loadingMsg.message_id).catch(() => {});
 
         let statusText = `💼 *Your Wallet*\n\n` +
-            `🔗 \\`${walletAddress}\\`\n\n` +
+            `🔗 \`${walletAddress}\`\n\n` +
             `💰 *Balance:* ${formatNumber(balance)} IFC\n` +
             `💵 *~$${usdValue.toFixed(2)} USD*\n\n` +
             `🎁 *Pending:* ${formatNumber(pendingRewards)} IFC\n` +
@@ -227,32 +227,32 @@ bot.command('wallet', async (ctx) => {
 
 bot.action('play_game', async (ctx) => {
     await ctx.answerCbQuery();
-    await ctx.reply(
-        `🎮 Launching Infinitecoin Jumper...`,
-        Markup.inlineKeyboard([
-            [Markup.button.webApp('🚀 Launch Now', GAME_URL)]
-        ])
-    );
+    // FIXED: Use bot.telegram.sendMessage to trigger command properly
+    await bot.telegram.sendMessage(ctx.from.id, '/play');
 });
 
 bot.action('connect_wallet', async (ctx) => {
     await ctx.answerCbQuery();
-    await ctx.reply('/connect');
+    // FIXED: Use bot.telegram.sendMessage to trigger command properly
+    await bot.telegram.sendMessage(ctx.from.id, '/connect');
 });
 
 bot.action('show_wallet', async (ctx) => {
     await ctx.answerCbQuery();
-    await ctx.reply('/wallet');
+    // FIXED: Use bot.telegram.sendMessage to trigger command properly
+    await bot.telegram.sendMessage(ctx.from.id, '/wallet');
 });
 
 bot.action('show_help', async (ctx) => {
     await ctx.answerCbQuery();
-    await ctx.reply('/help');
+    // FIXED: Use bot.telegram.sendMessage to trigger command properly
+    await bot.telegram.sendMessage(ctx.from.id, '/help');
 });
 
 bot.action('refresh_wallet', async (ctx) => {
     await ctx.answerCbQuery('Refreshing...');
-    await ctx.reply('/wallet');
+    // FIXED: Use bot.telegram.sendMessage to trigger command properly
+    await bot.telegram.sendMessage(ctx.from.id, '/wallet');
 });
 
 bot.action('change_wallet', async (ctx) => {
@@ -291,7 +291,7 @@ bot.on('text', async (ctx) => {
             
             await ctx.reply(
                 `✅ *Wallet Connected!*\n\n` +
-                `🔗 \\`${text}\\`\n\n` +
+                `🔗 \`${text}\`\n\n` +
                 `You're ready to earn IFC! Use /play to start.`,
                 {
                     parse_mode: 'Markdown',
