@@ -1,33 +1,33 @@
 const { Telegraf, Markup } = require('telegraf');
-const { Connection, PublicKey, Keypair } = require('@solana/web3.js');
+const { Connection, PublicKey } = require('@solana/web3.js');
 const { getAssociatedTokenAddress, getAccount } = require('@solana/spl-token');
 const express = require('express');
+const axios = require('axios');
 
 // ============== CONFIGURATION ==============
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const TOKEN_MINT = new PublicKey(process.env.TOKEN_MINT || 'C8KsvkMBuqmvX416MWTJGKW9S9MpKiUjmpnj1fhzpump');
 const RPC_ENDPOINT = process.env.RPC_ENDPOINT || 'https://api.mainnet-beta.solana.com';
 const GAME_URL = process.env.GAME_URL || 'https://infinitecoin-jumper-tgz1.vercel.app';
-const WEBHOOK_DOMAIN = process.env.WEBHOOK_DOMAIN; // e.g., https://your-bot.onrender.com
+const WEBHOOK_DOMAIN = process.env.WEBHOOK_DOMAIN;
 const PORT = process.env.PORT || 10000;
 
 // Validate required env vars
 if (!BOT_TOKEN) {
-    console.error('❌ BOT_TOKEN is required!');
+    console.error('❌ BOT_TOKEN is required! Set it in Render Environment Variables.');
     process.exit(1);
 }
 
 // ============== INITIALIZATION ==============
-const connection = new Connection(RPC_ENDPOINT);
+const connection = new Connection(RPC_ENDPOINT, 'confirmed');
 const bot = new Telegraf(BOT_TOKEN);
 const app = express();
 
 // Middleware
 app.use(express.json());
 
-// In-memory storage (use Redis/database for production with multiple instances)
+// In-memory storage (use Redis/database for production)
 const connectedWallets = new Map();
-const pendingConnections = new Map();
 
 // ============== COMMAND HANDLERS ==============
 
@@ -237,22 +237,22 @@ bot.action('play_game', async (ctx) => {
 
 bot.action('connect_wallet', async (ctx) => {
     await ctx.answerCbQuery();
-    await bot.telegram.sendMessage(ctx.from.id, '/connect');
+    await ctx.reply('/connect');
 });
 
 bot.action('show_wallet', async (ctx) => {
     await ctx.answerCbQuery();
-    await bot.telegram.sendMessage(ctx.from.id, '/wallet');
+    await ctx.reply('/wallet');
 });
 
 bot.action('show_help', async (ctx) => {
     await ctx.answerCbQuery();
-    await bot.telegram.sendMessage(ctx.from.id, '/help');
+    await ctx.reply('/help');
 });
 
 bot.action('refresh_wallet', async (ctx) => {
     await ctx.answerCbQuery('Refreshing...');
-    await bot.telegram.sendMessage(ctx.from.id, '/wallet');
+    await ctx.reply('/wallet');
 });
 
 bot.action('change_wallet', async (ctx) => {
@@ -280,11 +280,11 @@ bot.action('no_phantom_help', async (ctx) => {
 
 // Handle wallet connection from deep link
 bot.on('text', async (ctx) => {
-    const text = ctx.message.text;
+    const text = ctx.message.text.trim();
     const telegramId = ctx.from.id;
 
-    // Check if it's a wallet address (44 chars, base58)
-    if (text.length === 44 && /^[A-HJ-NP-Za-km-z1-9]*$/.test(text)) {
+    // Check if it's a Solana wallet address (32-44 chars, base58)
+    if (text.length >= 32 && text.length <= 44 && /^[A-HJ-NP-Za-km-z1-9]+$/.test(text)) {
         try {
             new PublicKey(text); // Validate
             connectedWallets.set(telegramId, text);
@@ -338,27 +338,33 @@ function formatNumber(num) {
 
 // ============== WEBHOOK SETUP ==============
 
-// Health check endpoint (required for Render)
+// Health check endpoints (required for Render)
 app.get('/', (req, res) => {
     res.json({ 
         status: 'ok', 
         bot: 'Infinitecoin Jumper',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        webhook: WEBHOOK_DOMAIN || 'not set'
     });
 });
 
 app.get('/health', (req, res) => {
-    res.json({ status: 'healthy', uptime: process.uptime() });
+    res.json({ 
+        status: 'healthy', 
+        uptime: process.uptime(),
+        wallets_connected: connectedWallets.size
+    });
 });
 
-// Set webhook endpoint
+// Webhook endpoint for Telegram
 app.post('/webhook', (req, res) => {
+    console.log('📩 Received webhook:', req.body.update_id);
     bot.handleUpdate(req.body, res);
 });
 
 // Error handling
 bot.catch((err, ctx) => {
-    console.error(`Error for ${ctx.updateType}:`, err);
+    console.error(`❌ Error for ${ctx.updateType}:`, err.message);
     ctx.reply('❌ An error occurred. Please try again.').catch(console.error);
 });
 
@@ -368,24 +374,32 @@ async function startBot() {
     // Start Express server first
     app.listen(PORT, '0.0.0.0', async () => {
         console.log(`🌐 Server running on port ${PORT}`);
+        console.log(`🔗 Health check: http://localhost:${PORT}/health`);
         
-        // Set webhook
+        // Set webhook if domain is provided
         if (WEBHOOK_DOMAIN) {
             const webhookUrl = `${WEBHOOK_DOMAIN}/webhook`;
             try {
-                await bot.telegram.setWebhook(webhookUrl);
+                await bot.telegram.deleteWebhook(); // Clear old webhook
+                await bot.telegram.setWebhook(webhookUrl, {
+                    allowed_updates: ['message', 'callback_query']
+                });
                 console.log(`✅ Webhook set: ${webhookUrl}`);
                 
                 // Verify webhook
                 const info = await bot.telegram.getWebhookInfo();
-                console.log('📊 Webhook info:', info);
+                console.log('📊 Webhook info:', {
+                    url: info.url,
+                    pending_updates: info.pending_update_count,
+                    max_connections: info.max_connections
+                });
             } catch (error) {
                 console.error('❌ Webhook setup failed:', error.message);
-                console.log('⚠️ Falling back to polling mode...');
+                console.log('⚠️ Starting in polling mode...');
                 await bot.launch();
             }
         } else {
-            console.log('⚠️ No WEBHOOK_DOMAIN set, using polling...');
+            console.log('⚠️ No WEBHOOK_DOMAIN set, using polling mode...');
             await bot.launch();
         }
         
@@ -393,14 +407,19 @@ async function startBot() {
     });
 }
 
-startBot().catch(console.error);
+startBot().catch(err => {
+    console.error('❌ Failed to start:', err);
+    process.exit(1);
+});
 
 // Graceful shutdown
 process.once('SIGINT', () => {
+    console.log('🛑 SIGINT received, shutting down...');
     bot.stop('SIGINT');
     process.exit(0);
 });
 process.once('SIGTERM', () => {
+    console.log('🛑 SIGTERM received, shutting down...');
     bot.stop('SIGTERM');
     process.exit(0);
 });
