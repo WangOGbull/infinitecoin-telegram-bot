@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Wallet Connect - Infinitecoin Jumper</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            padding: 20px;
+        }
+        .container {
+            text-align: center;
+            max-width: 400px;
+            width: 100%;
+        }
+        .game-logo { font-size: 4rem; margin-bottom: 1rem; }
+        h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+        .wallet-status {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+        }
+        .wallet-address {
+            font-family: monospace;
+            font-size: 1.2rem;
+            color: #4CAF50;
+            margin: 0.5rem 0;
+        }
+        .connect-btn {
+            background: #512DA8;
+            color: white;
+            border: none;
+            padding: 1rem 2rem;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 1rem;
+        }
+        .claim-section {
+            background: rgba(255,193,7,0.1);
+            border: 1px solid rgba(255,193,7,0.3);
+            border-radius: 15px;
+            padding: 1.5rem;
+            margin-top: 1.5rem;
+        }
+        .claim-btn {
+            background: #FFD700;
+            color: #1a1a2e;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="game-logo">🎮</div>
+        <h1>Infinitecoin Jumper</h1>
+        
+        <div class="wallet-status" id="walletStatus">
+            <p>Connect wallet to save earnings</p>
+            <button class="connect-btn" onclick="connectWallet()">🔗 Connect Wallet</button>
+        </div>
+
+        <div class="claim-section" id="claimSection" style="display: none;">
+            <h3>🎁 Claim Rewards</h3>
+            <p id="unclaimedAmount">Unclaimed: 0 IFC</p>
+            <div class="wallet-address" id="walletDisplay"></div>
+            <button class="claim-btn" onclick="claimRewards()">CLAIM NOW</button>
+        </div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const userId = urlParams.get('user');
+
+        async function loadUserData() {
+            if (!userId) return;
+            
+            try {
+                const res = await fetch(`/api/user/${userId}`);
+                const data = await res.json();
+                
+                if (data.connected) {
+                    document.getElementById('walletStatus').innerHTML = 
+                        `<p>✅ Wallet Connected</p>` +
+                        `<div class="wallet-address">${data.maskedWallet}</div>`;
+                    
+                    if (data.unclaimed > 0) {
+                        document.getElementById('claimSection').style.display = 'block';
+                        document.getElementById('unclaimedAmount').textContent = 
+                            `Unclaimed: ${data.unclaimed} IFC`;
+                        document.getElementById('walletDisplay').textContent = data.maskedWallet;
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load user:', err);
+            }
+        }
+
+        function connectWallet() {
+            const connectUrl = `${window.location.origin}/connect.html?user=${userId}&source=game`;
+            const phantomDeepLink = `https://phantom.app/ul/browse/${encodeURIComponent(connectUrl)}`;
+            window.location.href = phantomDeepLink;
+        }
+
+        async function claimRewards() {
+            // TODO: Replace with actual escrow contract call
+            alert('Claim functionality - Integrate with escrow contract here');
+        }
+
+        loadUserData();
+    </script>
+</body>
+</html>
