@@ -5,7 +5,8 @@ const path = require('path');
 
 // ============== CONFIGURATION ==============
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const WEBHOOK_DOMAIN = process.env.WEBHOOK_DOMAIN; // e.g., https://your-bot.onrender.com
+const WEBHOOK_DOMAIN = process.env.WEBHOOK_DOMAIN;
+const GAME_URL = process.env.GAME_URL || 'https://infinitecoin-jumper-tgz1.vercel.app';
 const PORT = process.env.PORT || 10000;
 const DATA_FILE = path.join(__dirname, 'users.json');
 
@@ -19,8 +20,7 @@ const bot = new Telegraf(BOT_TOKEN);
 const app = express();
 app.use(express.json());
 
-// In-memory storage (persisted to JSON file)
-let users = {}; // { userId: { wallet: string, balance: number, unclaimed: number, connected: boolean } }
+let users = {};
 
 // ============== DATA PERSISTENCE ==============
 
@@ -28,9 +28,8 @@ async function loadUsers() {
     try {
         const data = await fs.readFile(DATA_FILE, 'utf8');
         users = JSON.parse(data);
-        console.log(`📊 Loaded ${Object.keys(users).length} users from disk`);
+        console.log(`📊 Loaded ${Object.keys(users).length} users`);
     } catch (err) {
-        console.log('📁 No existing user data, starting fresh');
         users = {};
     }
 }
@@ -39,7 +38,7 @@ async function saveUsers() {
     try {
         await fs.writeFile(DATA_FILE, JSON.stringify(users, null, 2));
     } catch (err) {
-        console.error('❌ Failed to save users:', err);
+        console.error('❌ Save failed:', err);
     }
 }
 
@@ -56,9 +55,14 @@ function getUser(userId) {
     return users[userId];
 }
 
+function maskWallet(address) {
+    if (!address || address.length < 8) return 'Not connected';
+    return address.slice(0, 4) + '...' + address.slice(-4);
+}
+
 // ============== COMMAND HANDLERS ==============
 
-// 1. /start - Welcome message with inline buttons
+// /start - Welcome with inline buttons
 bot.command('start', async (ctx) => {
     const userId = ctx.from.id;
     const userName = ctx.from.first_name || 'Player';
@@ -66,77 +70,84 @@ bot.command('start', async (ctx) => {
     user.username = userName;
     await saveUsers();
 
-    const welcomeText = 
+    const walletStatus = user.connected 
+        ? `💼 ${maskWallet(user.wallet)}` 
+        : '❌ Not connected';
+
+    await ctx.reply(
         `🎮 *Welcome to Infinitecoin Jumper, ${userName}!* 🚀\n\n` +
-        `Jump, dodge, and collect Infinite Coins (IFC) in this thrilling P2E game!\n\n` +
         `💰 *Your Stats:*\n` +
         `• Balance: ${user.balance} IFC\n` +
         `• Unclaimed: ${user.unclaimed} IFC\n` +
-        `• Wallet: ${user.connected ? '✅ Connected' : '❌ Not connected'}\n\n` +
-        `Use the buttons below to get started!`;
-
-    await ctx.reply(welcomeText, {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-            [Markup.button.callback('🎮 Play', 'play_game'), Markup.button.callback('🔗 Connect Wallet', 'connect_wallet')],
-            [Markup.button.callback('💰 Balance', 'show_balance'), Markup.button.callback('❓ Help', 'show_help')]
-        ])
-    });
+        `• Wallet: ${walletStatus}\n\n` +
+        `Choose an option below:`,
+        {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+                [Markup.button.callback('🎮 Play Game', 'play_game')],
+                [Markup.button.callback('🔗 Connect Wallet', 'connect_wallet')],
+                [Markup.button.callback('💰 Balance', 'show_balance')],
+                [Markup.button.callback('❓ Help', 'show_help')]
+            ])
+        }
+    );
 });
 
-// 2. /help - List all commands
+// /help - Command list
 bot.command('help', async (ctx) => {
-    const helpText = 
+    await ctx.reply(
         `📚 *Infinitecoin Jumper Commands*\n\n` +
-        `🎮 */play* - Jump and earn IFC\n` +
-        `🔗 */connect* - Link your Phantom wallet\n` +
-        `💰 */balance* - Check your IFC balance\n` +
-        `🎁 */claim* - Move unclaimed earnings to balance\n` +
+        `🎮 */play* - Launch the jumping game\n` +
+        `🔗 */wallet* - Connect your Phantom wallet\n` +
+        `💰 */balance* - Check IFC balance & earnings\n` +
+        `🎁 */claim* - Collect unclaimed earnings\n` +
         `❓ */help* - Show this help message\n\n` +
-        `*How it works:*\n` +
-        `1. Connect your wallet with /connect\n` +
-        `2. Play with /play to earn IFC\n` +
-        `3. Check earnings with /balance\n` +
-        `4. Claim earnings with /claim\n\n` +
-        `⚠️ *Note:* You need $2 worth of IFC to claim rewards.`;
-
-    await ctx.reply(helpText, { parse_mode: 'Markdown' });
+        `*How to earn:*\n` +
+        `1. Connect wallet with /wallet\n` +
+        `2. Play game with /play\n` +
+        `3. Earn IFC by collecting coins\n` +
+        `4. Claim rewards with /claim\n\n` +
+        `⚠️ *Min $2 IFC required to claim*`,
+        { parse_mode: 'Markdown' }
+    );
 });
 
-// 3. /play - Simulate game and earn IFC
+// /play - Launch game with professional presentation
 bot.command('play', async (ctx) => {
     const userId = ctx.from.id;
     const user = getUser(userId);
-    
-    // Simulate game earnings (random 5-50 IFC)
-    const earned = Math.floor(Math.random() * 46) + 5;
-    user.unclaimed += earned;
-    await saveUsers();
 
-    const playText = 
-        `🎮 *Jumping!*\n\n` +
-        `You earned +${earned} IFC! 🪙\n\n` +
+    const walletDisplay = user.connected 
+        ? `💼 ${maskWallet(user.wallet)}` 
+        : '❌ Not connected';
+
+    const gameText = 
+        `🎮 *Infinitecoin Jumper* 🚀\n\n` +
+        `Tap the button below to start jumping!\n\n` +
+        `💰 *Your Stats:*\n` +
+        `• Balance: ${user.balance} IFC\n` +
         `• Unclaimed: ${user.unclaimed} IFC\n` +
-        `• Use /claim to collect your earnings`;
+        `• Wallet: ${walletDisplay}\n\n` +
+        `${!user.connected ? '⚠️ Connect wallet to earn real IFC!' : '✅ Ready to earn!'}`;
 
-    await ctx.reply(playText, {
+    await ctx.reply(gameText, {
         parse_mode: 'Markdown',
         ...Markup.inlineKeyboard([
-            [Markup.button.callback('🎮 Play Again', 'play_game')],
-            [Markup.button.callback('🎁 Claim Now', 'claim_rewards')]
+            [Markup.button.webApp('🚀 Launch Game', GAME_URL)],
+            ...(user.connected ? [] : [[Markup.button.callback('🔗 Connect Wallet First', 'connect_wallet')]])
         ])
     });
 });
 
-// 4. /connect - Phantom wallet deep link
-bot.command('connect', async (ctx) => {
+// /wallet - Connect Phantom wallet (FIXED)
+bot.command('wallet', async (ctx) => {
     const userId = ctx.from.id;
     const user = getUser(userId);
 
     if (user.connected && user.wallet) {
         return ctx.reply(
-            `✅ *Wallet Already Connected*\n\n` +
-            `🔗 Address: \`${user.wallet}\`\n\n` +
+            `✅ *Wallet Connected*\n\n` +
+            `💼 \`${maskWallet(user.wallet)}\`\n\n` +
             `You're ready to earn and claim IFC!`,
             {
                 parse_mode: 'Markdown',
@@ -148,25 +159,29 @@ bot.command('connect', async (ctx) => {
         );
     }
 
-    // Generate Phantom deep link to our landing page
-    const landingPageUrl = `${WEBHOOK_DOMAIN}/connect.html?user=${userId}`;
-    const phantomDeepLink = `https://phantom.app/ul/browse/${encodeURIComponent(landingPageUrl)}`;
+    // Generate connection URL with user ID
+    const connectUrl = `${WEBHOOK_DOMAIN}/connect.html?user=${userId}&source=telegram`;
+    const phantomDeepLink = `https://phantom.app/ul/browse/${encodeURIComponent(connectUrl)}`;
 
     await ctx.reply(
         `🔗 *Connect Your Phantom Wallet*\n\n` +
-        `Tap the button below to open Phantom and connect your wallet.\n\n` +
-        `🔒 *Security:* We only need your public address. Never share your private key!`,
+        `Follow these steps:\n` +
+        `1️⃣ Tap "Open Phantom" below\n` +
+        `2️⃣ Phantom will open\n` +
+        `3️⃣ Tap "Connect" in Phantom\n` +
+        `4️⃣ Return to Telegram automatically\n\n` +
+        `🔒 *We only store your public address*`,
         {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
-                [Markup.button.url('🔗 Open Phantom Wallet', phantomDeepLink)],
-                [Markup.button.callback('❓ How to connect', 'connect_help')]
+                [Markup.button.url('👻 Open Phantom Wallet', phantomDeepLink)],
+                [Markup.button.callback('❓ Need Help?', 'wallet_help')]
             ])
         }
     );
 });
 
-// 5. /balance - Show user's IFC balance
+// /balance - Show stats
 bot.command('balance', async (ctx) => {
     const userId = ctx.from.id;
     const user = getUser(userId);
@@ -176,8 +191,8 @@ bot.command('balance', async (ctx) => {
         `🪙 *Available:* ${user.balance} IFC\n` +
         `🎁 *Unclaimed:* ${user.unclaimed} IFC\n` +
         `💵 *Total:* ${user.balance + user.unclaimed} IFC\n\n` +
-        `🔗 *Wallet:* ${user.connected ? `\`${user.wallet}\`` : 'Not connected'}\n\n` +
-        `${user.unclaimed > 0 ? 'Use /claim to collect unclaimed earnings!' : 'Play /play to earn more!'}`;
+        `💼 *Wallet:* ${user.connected ? `\`${maskWallet(user.wallet)}\`` : 'Not connected'}\n\n` +
+        `${user.unclaimed > 0 ? '🎁 Use /claim to collect!' : '🎮 Use /play to earn more!'}`;
 
     await ctx.reply(balanceText, {
         parse_mode: 'Markdown',
@@ -187,7 +202,7 @@ bot.command('balance', async (ctx) => {
     });
 });
 
-// 6. /claim - Move unclaimed to balance (mock escrow release)
+// /claim - Collect earnings
 bot.command('claim', async (ctx) => {
     const userId = ctx.from.id;
     const user = getUser(userId);
@@ -204,8 +219,7 @@ bot.command('claim', async (ctx) => {
     if (!user.connected) {
         return ctx.reply(
             `❌ *Wallet Not Connected*\n\n` +
-            `You need to connect your wallet first.\n` +
-            `Use /connect to link your Phantom wallet.`,
+            `Connect your wallet first with /wallet`,
             { parse_mode: 'Markdown' }
         );
     }
@@ -214,41 +228,45 @@ bot.command('claim', async (ctx) => {
     // const escrowProgram = new PublicKey("YOUR_ESCROW_PROGRAM_ID");
     // await escrowProgram.methods.claimRewards().accounts({...}).rpc();
 
-    const claimedAmount = user.unclaimed;
-    user.balance += claimedAmount;
+    const claimed = user.unclaimed;
+    user.balance += claimed;
     user.unclaimed = 0;
     await saveUsers();
 
     await ctx.reply(
         `🎉 *Claim Successful!*\n\n` +
-        `✅ ${claimedAmount} IFC added to your balance\n` +
+        `✅ ${claimed} IFC added to balance\n` +
+        `💼 Wallet: \`${maskWallet(user.wallet)}\`\n` +
         `💰 New balance: ${user.balance} IFC\n\n` +
-        `_Note: This is a mock claim. In production, this will call the escrow contract._`,
+        `_Mock claim - production will use escrow contract_`,
         { parse_mode: 'Markdown' }
     );
 });
 
-// ============== ACTION HANDLERS (Inline Buttons) ==============
+// ============== ACTION HANDLERS ==============
 
 bot.action('play_game', async (ctx) => {
     await ctx.answerCbQuery();
     const userId = ctx.from.id;
     const user = getUser(userId);
     
-    const earned = Math.floor(Math.random() * 46) + 5;
-    user.unclaimed += earned;
-    await saveUsers();
+    const walletDisplay = user.connected 
+        ? `💼 ${maskWallet(user.wallet)}` 
+        : '❌ Not connected';
 
     await ctx.editMessageText(
-        `🎮 *Jumping!*\n\n` +
-        `You earned +${earned} IFC! 🪙\n\n` +
+        `🎮 *Infinitecoin Jumper* 🚀\n\n` +
+        `Tap the button below to start jumping!\n\n` +
+        `💰 *Your Stats:*\n` +
+        `• Balance: ${user.balance} IFC\n` +
         `• Unclaimed: ${user.unclaimed} IFC\n` +
-        `• Use /claim to collect your earnings`,
+        `• Wallet: ${walletDisplay}\n\n` +
+        `${!user.connected ? '⚠️ Connect wallet to earn real IFC!' : '✅ Ready to earn!'}`,
         {
             parse_mode: 'Markdown',
             ...Markup.inlineKeyboard([
-                [Markup.button.callback('🎮 Play Again', 'play_game')],
-                [Markup.button.callback('🎁 Claim Now', 'claim_rewards')]
+                [Markup.button.webApp('🚀 Launch Game', GAME_URL)],
+                ...(user.connected ? [] : [[Markup.button.callback('🔗 Connect Wallet', 'connect_wallet')]])
             ])
         }
     );
@@ -256,7 +274,31 @@ bot.action('play_game', async (ctx) => {
 
 bot.action('connect_wallet', async (ctx) => {
     await ctx.answerCbQuery();
-    await ctx.reply('/connect');
+    const userId = ctx.from.id;
+    const user = getUser(userId);
+
+    if (user.connected && user.wallet) {
+        return ctx.reply(
+            `✅ *Already Connected*\n\n` +
+            `💼 \`${maskWallet(user.wallet)}\`\n\n` +
+            `Your wallet is already linked!`,
+            { parse_mode: 'Markdown' }
+        );
+    }
+
+    const connectUrl = `${WEBHOOK_DOMAIN}/connect.html?user=${userId}&source=telegram`;
+    const phantomDeepLink = `https://phantom.app/ul/browse/${encodeURIComponent(connectUrl)}`;
+
+    await ctx.reply(
+        `🔗 *Connect Phantom Wallet*\n\n` +
+        `Tap below to open Phantom:`,
+        {
+            parse_mode: 'Markdown',
+            ...Markup.inlineKeyboard([
+                [Markup.button.url('👻 Open Phantom', phantomDeepLink)]
+            ])
+        }
+    );
 });
 
 bot.action('show_balance', async (ctx) => {
@@ -274,21 +316,20 @@ bot.action('claim_rewards', async (ctx) => {
     await ctx.reply('/claim');
 });
 
-bot.action('connect_help', async (ctx) => {
+bot.action('wallet_help', async (ctx) => {
     await ctx.answerCbQuery();
     await ctx.reply(
-        `📱 *How to Connect Phantom Wallet*\n\n` +
-        `1. Tap "Open Phantom Wallet" button\n` +
-        `2. Phantom app will open\n` +
-        `3. Approve the connection\n` +
-        `4. Your wallet will be linked automatically\n\n` +
-        `🔒 We only store your public wallet address.`
+        `📱 *How to Connect*\n\n` +
+        `1. Install Phantom wallet (phantom.app)\n` +
+        `2. Return and tap /wallet\n` +
+        `3. Tap "Open Phantom"\n` +
+        `4. Approve connection\n` +
+        `5. Done! Your wallet is linked`
     );
 });
 
-// ============== WEBHOOK ENDPOINTS FOR LANDING PAGE ==============
+// ============== API ENDPOINTS ==============
 
-// Health check
 app.get('/', (req, res) => {
     res.json({ 
         status: 'ok', 
@@ -306,14 +347,9 @@ app.get('/health', (req, res) => {
     });
 });
 
-// Telegram webhook
-app.post('/webhook', (req, res) => {
-    bot.handleUpdate(req.body, res);
-});
-
-// API endpoint for landing page to confirm wallet connection
+// API: Connect wallet from landing page
 app.post('/api/connect-wallet', async (req, res) => {
-    const { userId, walletAddress } = req.body;
+    const { userId, walletAddress, source } = req.body;
     
     if (!userId || !walletAddress) {
         return res.status(400).json({ error: 'Missing userId or walletAddress' });
@@ -324,31 +360,48 @@ app.post('/api/connect-wallet', async (req, res) => {
     user.connected = true;
     await saveUsers();
 
-    // Send confirmation message to user via bot
+    // Notify user via Telegram
     try {
         await bot.telegram.sendMessage(userId, 
             `✅ *Wallet Connected!*\n\n` +
-            `🔗 Address: \`${walletAddress}\`\n\n` +
-            `You're ready to earn IFC! Use /play to start.`,
+            `💼 \`${maskWallet(walletAddress)}\`\n\n` +
+            `${source === 'game' ? 'Return to the game and start earning!' : 'Use /play to start earning!'}`,
             { parse_mode: 'Markdown' }
         );
     } catch (err) {
         console.error('Failed to notify user:', err);
     }
 
-    res.json({ success: true, message: 'Wallet connected' });
+    res.json({ 
+        success: true, 
+        message: 'Wallet connected',
+        maskedWallet: maskWallet(walletAddress)
+    });
 });
 
-// Serve static files (landing page)
+// API: Get user data (for game integration)
+app.get('/api/user/:userId', async (req, res) => {
+    const userId = req.params.userId;
+    const user = getUser(userId);
+    
+    res.json({
+        connected: user.connected,
+        wallet: user.wallet,
+        maskedWallet: maskWallet(user.wallet),
+        balance: user.balance,
+        unclaimed: user.unclaimed
+    });
+});
+
+// Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ============== ERROR HANDLING ==============
-
-bot.catch((err, ctx) => {
-    console.error(`❌ Error for ${ctx.updateType}:`, err.message);
+// Telegram webhook
+app.post('/webhook', (req, res) => {
+    bot.handleUpdate(req.body, res);
 });
 
-// ============== START SERVER ==============
+// ============== START ==============
 
 async function start() {
     await loadUsers();
@@ -361,16 +414,13 @@ async function start() {
             try {
                 await bot.telegram.deleteWebhook({ drop_pending_updates: true });
                 await bot.telegram.setWebhook(webhookUrl);
-                console.log(`✅ Webhook set: ${webhookUrl}`);
+                console.log(`✅ Webhook: ${webhookUrl}`);
             } catch (err) {
                 console.error('❌ Webhook failed:', err.message);
             }
-        } else {
-            console.log('⚠️ No WEBHOOK_DOMAIN, using polling...');
-            await bot.launch();
         }
         
-        console.log('🤖 Bot is running!');
+        console.log('🤖 Bot ready!');
     });
 }
 
