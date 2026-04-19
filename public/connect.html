@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Connect Phantom Wallet - Infinitecoin Jumper</title>
+    <title>Connect Wallet - Infinitecoin Jumper</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -14,16 +14,28 @@
             align-items: center;
             justify-content: center;
             color: white;
+            padding: 20px;
         }
         .container {
             text-align: center;
-            padding: 2rem;
             max-width: 400px;
-            width: 90%;
+            width: 100%;
         }
-        .logo { font-size: 4rem; margin-bottom: 1rem; }
-        h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
-        p { opacity: 0.9; margin-bottom: 2rem; line-height: 1.6; }
+        .logo { font-size: 5rem; margin-bottom: 1rem; animation: bounce 2s infinite; }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        h1 { font-size: 1.8rem; margin-bottom: 0.5rem; font-weight: 700; }
+        .subtitle { opacity: 0.9; margin-bottom: 2rem; font-size: 1rem; }
+        .wallet-card {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
         .wallet-btn {
             background: #512DA8;
             color: white;
@@ -34,32 +46,47 @@
             font-weight: 600;
             cursor: pointer;
             width: 100%;
-            margin-bottom: 1rem;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: all 0.3s;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 0.5rem;
         }
-        .wallet-btn:hover {
+        .wallet-btn:hover:not(:disabled) {
             transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+            box-shadow: 0 10px 30px rgba(81, 45, 168, 0.4);
         }
         .wallet-btn:disabled {
             opacity: 0.6;
             cursor: not-allowed;
-            transform: none;
         }
         .status {
-            margin-top: 1rem;
+            margin-top: 1.5rem;
             padding: 1rem;
-            border-radius: 8px;
-            font-size: 0.9rem;
+            border-radius: 12px;
+            font-size: 0.95rem;
             display: none;
+            animation: fadeIn 0.3s;
         }
-        .status.success { background: rgba(76, 175, 80, 0.2); display: block; }
-        .status.error { background: rgba(244, 67, 54, 0.2); display: block; }
-        .status.loading { background: rgba(255, 193, 7, 0.2); display: block; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .status.success { 
+            background: rgba(76, 175, 80, 0.2); 
+            display: block; 
+            border: 1px solid rgba(76, 175, 80, 0.3);
+        }
+        .status.error { 
+            background: rgba(244, 67, 54, 0.2); 
+            display: block; 
+            border: 1px solid rgba(244, 67, 54, 0.3);
+        }
+        .status.loading { 
+            background: rgba(255, 193, 7, 0.2); 
+            display: block; 
+            border: 1px solid rgba(255, 193, 7, 0.3);
+        }
         .spinner {
             display: inline-block;
             width: 20px;
@@ -67,64 +94,127 @@
             border: 3px solid rgba(255,255,255,.3);
             border-radius: 50%;
             border-top-color: white;
-            animation: spin 1s ease-in-out infinite;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+        .wallet-info {
+            background: rgba(0,0,0,0.2);
+            padding: 1rem;
+            border-radius: 10px;
+            margin-top: 1rem;
+            font-family: monospace;
+            font-size: 1.1rem;
+            word-break: break-all;
+        }
+        .back-btn {
+            background: transparent;
+            border: 2px solid white;
+            color: white;
+            padding: 0.8rem 1.5rem;
+            border-radius: 10px;
+            margin-top: 1rem;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .back-btn:hover {
+            background: white;
+            color: #764ba2;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="logo">🎮</div>
         <h1>Infinitecoin Jumper</h1>
-        <p>Connect your Phantom wallet to start earning IFC tokens</p>
+        <p class="subtitle">Connect your Phantom wallet to earn IFC</p>
         
-        <button class="wallet-btn" id="connectBtn" onclick="connectWallet()">
-            <span>👻</span> Connect Phantom Wallet
-        </button>
-        
-        <div class="status" id="status"></div>
+        <div class="wallet-card">
+            <div id="initialView">
+                <p style="margin-bottom: 1.5rem; opacity: 0.9;">
+                    Phantom will ask you to approve the connection.<br>
+                    Your private keys stay safe.
+                </p>
+                <button class="wallet-btn" id="connectBtn" onclick="connectPhantom()">
+                    <span>👻</span> Connect Phantom Wallet
+                </button>
+            </div>
+            
+            <div id="status" class="status"></div>
+        </div>
     </div>
 
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const userId = urlParams.get('user');
-        
-        if (!userId) {
-            showStatus('error', '❌ Invalid link. Please start from Telegram bot.');
-            document.getElementById('connectBtn').disabled = true;
-        }
+        const source = urlParams.get('source') || 'telegram';
 
-        function showStatus(type, message) {
+        function showStatus(type, message, walletAddress = null) {
             const status = document.getElementById('status');
+            const initialView = document.getElementById('initialView');
+            
+            initialView.style.display = 'none';
             status.className = 'status ' + type;
-            status.innerHTML = message;
+            
+            let html = message;
+            if (walletAddress) {
+                html += `<div class="wallet-info">${walletAddress.slice(0,4)}...${walletAddress.slice(-4)}</div>`;
+            }
+            if (type === 'success') {
+                html += `<br><a href="#" class="back-btn" onclick="closeWindow()">✕ Close</a>`;
+            }
+            status.innerHTML = html;
         }
 
-        async function connectWallet() {
+        function closeWindow() {
+            if (window.Telegram?.WebApp) {
+                window.Telegram.WebApp.close();
+            } else {
+                window.close();
+            }
+        }
+
+        async function connectPhantom() {
             const btn = document.getElementById('connectBtn');
             btn.disabled = true;
-            showStatus('loading', '<span class="spinner"></span> Connecting to Phantom...');
+
+            if (!userId) {
+                showStatus('error', '❌ Invalid session. Please start from Telegram or the game.');
+                return;
+            }
 
             try {
+                // Check Phantom
                 const provider = window.solana;
                 if (!provider || !provider.isPhantom) {
-                    showStatus('error', '❌ Phantom wallet not found. Please install Phantom extension or app.');
+                    showStatus('error', 
+                        '❌ Phantom not found.<br><br>' +
+                        '<a href="https://phantom.app/download" target="_blank" style="color: #FFD700;">Install Phantom →</a>'
+                    );
                     btn.disabled = false;
                     return;
                 }
 
+                showStatus('loading', '<span class="spinner"></span> Waiting for Phantom...');
+
+                // Connect
                 const response = await provider.connect();
                 const walletAddress = response.publicKey.toString();
 
-                showStatus('loading', '<span class="spinner"></span> Confirming connection...');
+                showStatus('loading', '<span class="spinner"></span> Confirming...');
 
+                // Send to backend
                 const apiUrl = window.location.origin + '/api/connect-wallet';
                 const res = await fetch(apiUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         userId: userId,
-                        walletAddress: walletAddress
+                        walletAddress: walletAddress,
+                        source: source
                     })
                 });
 
@@ -132,20 +222,23 @@
 
                 if (data.success) {
                     showStatus('success', 
-                        `✅ Wallet connected successfully!<br><br>` +
-                        `🔗 <code>${walletAddress}</code><br><br>` +
-                        `You can now close this page and return to Telegram.`
+                        `✅ Wallet Connected!<br><br>Your wallet:`,
+                        walletAddress
                     );
-                    btn.innerHTML = '<span>✅</span> Connected';
                 } else {
                     throw new Error(data.error || 'Connection failed');
                 }
 
             } catch (err) {
-                console.error('Connection error:', err);
-                showStatus('error', '❌ ' + (err.message || 'Failed to connect wallet'));
+                console.error('Error:', err);
+                showStatus('error', '❌ ' + (err.message || 'Failed to connect'));
                 btn.disabled = false;
             }
+        }
+
+        // Auto-connect if Phantom is already available
+        if (window.solana?.isPhantom && userId) {
+            document.getElementById('connectBtn').innerHTML = '<span>👻</span> Tap to Connect';
         }
     </script>
 </body>
