@@ -227,31 +227,26 @@ bot.command('wallet', async (ctx) => {
 
 bot.action('play_game', async (ctx) => {
     await ctx.answerCbQuery();
-    // FIXED: Use bot.telegram.sendMessage to trigger command properly
     await bot.telegram.sendMessage(ctx.from.id, '/play');
 });
 
 bot.action('connect_wallet', async (ctx) => {
     await ctx.answerCbQuery();
-    // FIXED: Use bot.telegram.sendMessage to trigger command properly
     await bot.telegram.sendMessage(ctx.from.id, '/connect');
 });
 
 bot.action('show_wallet', async (ctx) => {
     await ctx.answerCbQuery();
-    // FIXED: Use bot.telegram.sendMessage to trigger command properly
     await bot.telegram.sendMessage(ctx.from.id, '/wallet');
 });
 
 bot.action('show_help', async (ctx) => {
     await ctx.answerCbQuery();
-    // FIXED: Use bot.telegram.sendMessage to trigger command properly
     await bot.telegram.sendMessage(ctx.from.id, '/help');
 });
 
 bot.action('refresh_wallet', async (ctx) => {
     await ctx.answerCbQuery('Refreshing...');
-    // FIXED: Use bot.telegram.sendMessage to trigger command properly
     await bot.telegram.sendMessage(ctx.from.id, '/wallet');
 });
 
@@ -371,40 +366,39 @@ bot.catch((err, ctx) => {
 // ============== START SERVER ==============
 
 async function startBot() {
-    // Start Express server first
-    app.listen(PORT, '0.0.0.0', async () => {
+    // Start Express server first (non-blocking)
+    const server = app.listen(PORT, '0.0.0.0', () => {
         console.log(`🌐 Server running on port ${PORT}`);
         console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-        
-        // Set webhook if domain is provided
-        if (WEBHOOK_DOMAIN) {
-            const webhookUrl = `${WEBHOOK_DOMAIN}/webhook`;
-            try {
-                await bot.telegram.deleteWebhook(); // Clear old webhook
-                await bot.telegram.setWebhook(webhookUrl, {
-                    allowed_updates: ['message', 'callback_query']
-                });
-                console.log(`✅ Webhook set: ${webhookUrl}`);
-                
-                // Verify webhook
-                const info = await bot.telegram.getWebhookInfo();
-                console.log('📊 Webhook info:', {
-                    url: info.url,
-                    pending_updates: info.pending_update_count,
-                    max_connections: info.max_connections
-                });
-            } catch (error) {
-                console.error('❌ Webhook setup failed:', error.message);
-                console.log('⚠️ Starting in polling mode...');
-                await bot.launch();
-            }
-        } else {
-            console.log('⚠️ No WEBHOOK_DOMAIN set, using polling mode...');
-            await bot.launch();
-        }
-        
-        console.log('🤖 Bot is running!');
     });
+
+    // Set webhook if domain is provided (async, non-blocking)
+    if (WEBHOOK_DOMAIN) {
+        const webhookUrl = `${WEBHOOK_DOMAIN}/webhook`;
+        try {
+            await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+            await bot.telegram.setWebhook(webhookUrl, {
+                allowed_updates: ['message', 'callback_query']
+            });
+            console.log(`✅ Webhook set: ${webhookUrl}`);
+            
+            // Verify webhook
+            const info = await bot.telegram.getWebhookInfo();
+            console.log('📊 Webhook info:', {
+                url: info.url,
+                pending_updates: info.pending_update_count,
+                max_connections: info.max_connections
+            });
+        } catch (error) {
+            console.error('❌ Webhook setup failed:', error.message);
+            console.log('⚠️ Bot will still respond to health checks');
+        }
+    } else {
+        console.log('⚠️ No WEBHOOK_DOMAIN set, using polling mode...');
+        await bot.launch();
+    }
+
+    console.log('🤖 Bot is running!');
 }
 
 startBot().catch(err => {
