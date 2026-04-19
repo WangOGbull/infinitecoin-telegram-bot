@@ -1,11 +1,10 @@
 {
-  "name": "infinitecoin-jumper-bot",
+  "name": "infinitecoin-telegram-bot",
   "version": "2.0.0",
-  "description": "Complete Infinitecoin Jumper P2E Telegram Bot with wallet connection and escrow",
+  "description": "Infinitecoin Jumper P2E Telegram Bot",
   "main": "bot.js",
   "scripts": {
-    "start": "node bot.js",
-    "dev": "nodemon bot.js"
+    "start": "node bot.js"
   },
   "dependencies": {
     "express": "^4.18.3",
